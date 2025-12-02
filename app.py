@@ -18,11 +18,51 @@ report_mode = st.sidebar.radio(
     "Seleccionar Reporte:",
     ["Reporte Facturación", "Reporte de Importación", "Reporte Despachos"]
 )
-# --- REPORTE FACTURACIÓN (Lógica Original) ---
+# --- REPORTE FACTURACIÓN ---
 if report_mode == "Reporte Facturación":
     
     # File Path
     FILE_PATH = "datos.xlsx"
+    # Load Data Function
+    @st.cache_data
+    def load_data():
+        if not os.path.exists(FILE_PATH):
+            return None
+        try:
+            # Specify engine explicitly
+            df = pd.read_excel(FILE_PATH, sheet_name="DINAMIZADO", engine='openpyxl')
+            
+            # Ensure FECHA is datetime
+            df['FECHA'] = pd.to_datetime(df['FECHA'])
+            
+            # Ensure categorical columns are strings
+            df['PROD'] = df['PROD'].astype(str)
+            df['DEPARTAMENTO'] = df['DEPARTAMENTO'].astype(str)
+            
+            # --- DECIMAL HANDLING: Treat ',' as decimal separator ---
+            if df['VOLUMEN'].dtype == 'object':
+                # Remove thousands separator (.) and replace decimal separator (,) with (.)
+                df['VOLUMEN'] = df['VOLUMEN'].astype(str).str.replace('.', '', regex=False) 
+                df['VOLUMEN'] = df['VOLUMEN'].str.replace(',', '.')
+                df['VOLUMEN'] = pd.to_numeric(df['VOLUMEN'], errors='coerce')
+            
+            # --- FILTER: Remove GNV and KRS ---
+            df = df[~df['PROD'].isin(['GNV', 'KRS'])]
+            
+            return df
+        except Exception as e:
+            st.error(f"Error al leer el archivo: {e}")
+            return None
+    # Execute Load Data
+    df = load_data()
+    # Check if data loaded correctly
+    if df is None:
+        st.error(f"No se encontró el archivo '{FILE_PATH}' o está dañado. Por favor asegúrate de subirlo al repositorio.")
+        st.stop()
+    # --- Sidebar Filters ---
+    st.sidebar.markdown("---")
+    st.sidebar.header("Filtros Facturación")
+    # 1. Time Analysis Filter
     st.sidebar.subheader("1. Tiempo de Análisis")
     # Helper to manage date updates
     if 'start_date' not in st.session_state:
@@ -58,10 +98,10 @@ if report_mode == "Reporte Facturación":
         key="period_selector", 
         on_change=update_dates
     )
-    # Date Inputs (Connected to Session State)
+    # Date Inputs
     start_date = st.sidebar.date_input("Fecha Inicial", key="start_date")
     end_date = st.sidebar.date_input("Fecha Final", key="end_date")
-    # Filter by date
+    # Apply Date Filter
     mask_date = (df['FECHA'] >= pd.to_datetime(start_date)) & (df['FECHA'] <= pd.to_datetime(end_date))
     df_filtered = df.loc[mask_date]
     # 2. Product Filter
@@ -136,7 +176,6 @@ if report_mode == "Reporte Facturación":
 elif report_mode == "Reporte de Importación":
     st.header("Reporte de Importación")
     
-    # Image placeholder - User needs to upload 'imagen_importacion.png'
     if os.path.exists("imagen_importacion.png"):
         st.image("imagen_importacion.png", use_container_width=True)
     else:
@@ -146,7 +185,6 @@ elif report_mode == "Reporte de Importación":
 elif report_mode == "Reporte Despachos":
     st.header("Reporte de Despachos Diarios")
     
-    # Image placeholder - User needs to upload 'imagen_despachos.png'
     if os.path.exists("imagen_despachos.png"):
         st.image("imagen_despachos.png", use_container_width=True)
     else:
