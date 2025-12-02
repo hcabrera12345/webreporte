@@ -12,16 +12,27 @@ st.set_page_config(
 )
 # Title
 st.title("📊 Dashboard de Reportes Interactivos")
-# --- NAVEGACIÓN (Añadido según solicitud) ---
+# --- NAVEGACIÓN ---
 st.sidebar.title("Navegación")
 report_mode = st.sidebar.radio(
     "Seleccionar Reporte:",
     ["Reporte Facturación", "Reporte de Importación", "Reporte Despachos"]
 )
-# --- SECCIÓN 1: REPORTE FACTURACIÓN (Tu código original) ---
+# --- REPORTE FACTURACIÓN (Tu código original) ---
 if report_mode == "Reporte Facturación":
-    # File Path
+    
     FILE_PATH = "datos.xlsx"
+    # --- DIAGNÓSTICO DE ARCHIVO (Para detectar el error) ---
+    if os.path.exists(FILE_PATH):
+        size = os.path.getsize(FILE_PATH)
+        # st.info(f"Diagnóstico: El archivo 'datos.xlsx' pesa {size} bytes.")
+        if size == 0:
+            st.error("❌ ERROR CRÍTICO: El archivo 'datos.xlsx' pesa 0 bytes. Se subió vacío a GitHub.")
+            st.stop()
+    else:
+        st.error("❌ ERROR: No se encuentra 'datos.xlsx'.")
+        st.stop()
+    # -------------------------------------------------------
     # Load Data
     @st.cache_data
     def load_data():
@@ -165,17 +176,17 @@ if report_mode == "Reporte Facturación":
     # Data Preview
     with st.expander("Ver Datos Detallados"):
         st.dataframe(df_filtered, use_container_width=True)
-# --- SECCIÓN 2: REPORTE IMPORTACIÓN ---
+# --- REPORTE IMPORTACIÓN ---
 elif report_mode == "Reporte de Importación":
     st.header("Reporte de Importación")
     if os.path.exists("imagen_importacion.png"):
         st.image("imagen_importacion.png", use_container_width=True)
     else:
-        st.info("ℹ️ Sube la imagen 'imagen_importacion.png' al repositorio para verla aquí.")
-# --- SECCIÓN 3: REPORTE DESPACHOS ---
+        st.info("ℹ️ Sube 'imagen_importacion.png' al repositorio para ver este gráfico.")
+# --- REPORTE DESPACHOS ---
 elif report_mode == "Reporte Despachos":
     st.header("Reporte de Despachos Diarios")
     if os.path.exists("imagen_despachos.png"):
         st.image("imagen_despachos.png", use_container_width=True)
     else:
-        st.info("ℹ️ Sube la imagen 'imagen_despachos.png' al repositorio para verla aquí.")
+        st.info("ℹ️ Sube 'imagen_despachos.png' al repositorio para ver este gráfico.")
