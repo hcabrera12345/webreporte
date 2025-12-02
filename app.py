@@ -20,7 +20,8 @@ def load_data():
     if not os.path.exists(FILE_PATH):
         return None
     try:
-        df = pd.read_excel(FILE_PATH, sheet_name="DINAMIZADO")
+        # Specify engine explicitly to avoid Streamlit Cloud errors
+        df = pd.read_excel(FILE_PATH, sheet_name="DINAMIZADO", engine='openpyxl')
         # Ensure FECHA is datetime
         df['FECHA'] = pd.to_datetime(df['FECHA'])
         
