@@ -23,44 +23,6 @@ if report_mode == "Reporte Facturación":
     
     # File Path
     FILE_PATH = "datos.xlsx"
-    # Load Data
-    @st.cache_data
-    def load_data():
-        if not os.path.exists(FILE_PATH):
-            return None
-        try:
-            # Specify engine explicitly
-            df = pd.read_excel(FILE_PATH, sheet_name="DINAMIZADO", engine='openpyxl')
-            
-            # Ensure FECHA is datetime
-            df['FECHA'] = pd.to_datetime(df['FECHA'])
-            
-            # Ensure categorical columns are strings
-            df['PROD'] = df['PROD'].astype(str)
-            df['DEPARTAMENTO'] = df['DEPARTAMENTO'].astype(str)
-            
-            # --- MODIFICACIÓN DECIMALES: Tratar ',' como decimal ---
-            # Si la columna es texto, reemplazar , por . y convertir
-            if df['VOLUMEN'].dtype == 'object':
-                df['VOLUMEN'] = df['VOLUMEN'].astype(str).str.replace('.', '', regex=False) # Eliminar miles si los hay
-                df['VOLUMEN'] = df['VOLUMEN'].str.replace(',', '.')
-                df['VOLUMEN'] = pd.to_numeric(df['VOLUMEN'], errors='coerce')
-            
-            # --- MODIFICACIÓN 3: Eliminar GNV y KRS ---
-            df = df[~df['PROD'].isin(['GNV', 'KRS'])]
-            
-            return df
-        except Exception as e:
-            st.error(f"Error al leer el archivo: {e}")
-            return None
-    df = load_data()
-    if df is None:
-        st.error(f"No se encontró el archivo '{FILE_PATH}'. Por favor asegúrate de subirlo al repositorio.")
-        st.stop()
-    # --- Sidebar Filters ---
-    st.sidebar.markdown("---")
-    st.sidebar.header("Filtros Facturación")
-    # --- MODIFICACIÓN 5: Periodos Recomendados ---
     st.sidebar.subheader("1. Tiempo de Análisis")
     # Helper to manage date updates
     if 'start_date' not in st.session_state:
