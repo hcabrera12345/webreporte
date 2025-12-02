@@ -2,20 +2,18 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import os
-
-# Page Configuration
+from datetime import timedelta
+# Page Configuration (Responsive and Wide)
 st.set_page_config(
     page_title="Dashboard de Reportes Interactivos",
     page_icon="📊",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
-
 # Title
 st.title("📊 Dashboard de Reportes Interactivos")
-
 # File Path
 FILE_PATH = "datos.xlsx"
-
 # Load Data
 @st.cache_data
 def load_data():
@@ -25,104 +23,135 @@ def load_data():
         df = pd.read_excel(FILE_PATH, sheet_name="DINAMIZADO")
         # Ensure FECHA is datetime
         df['FECHA'] = pd.to_datetime(df['FECHA'])
-        # Ensure categorical columns are strings to avoid sorting errors
+        
+        # Ensure categorical columns are strings
         df['PROD'] = df['PROD'].astype(str)
         df['DEPARTAMENTO'] = df['DEPARTAMENTO'].astype(str)
+        
+        # --- MODIFICACIÓN 3: Eliminar GNV y KRS ---
+        df = df[~df['PROD'].isin(['GNV', 'KRS'])]
+        
         return df
     except Exception as e:
         st.error(f"Error al leer el archivo: {e}")
         return None
-
 df = load_data()
-
 if df is None:
-    st.error(f"No se encontró el archivo '{FILE_PATH}' o hubo un error al leerlo. Por favor asegúrate de que el archivo esté en la carpeta del proyecto.")
+    st.error(f"No se encontró el archivo '{FILE_PATH}'. Por favor asegúrate de subirlo al repositorio.")
     st.stop()
-
-# Sidebar Filters
+# --- Sidebar Filters ---
 st.sidebar.header("Filtros")
-
-# 1. Time Analysis Filter
+# --- MODIFICACIÓN 5: Periodos Recomendados ---
 st.sidebar.subheader("1. Tiempo de Análisis")
-min_date = df['FECHA'].min()
-max_date = df['FECHA'].max()
-
-start_date = st.sidebar.date_input("Fecha Inicial", min_date, min_value=min_date, max_value=max_date)
-end_date = st.sidebar.date_input("Fecha Final", max_date, min_value=min_date, max_value=max_date)
-
-granularity = st.sidebar.radio("Granularidad", ["Diario", "Mensual"])
-
+# Helper to manage date updates
+if 'start_date' not in st.session_state:
+    st.session_state.start_date = df['FECHA'].min()
+if 'end_date' not in st.session_state:
+    st.session_state.end_date = df['FECHA'].max()
+def update_dates():
+    period = st.session_state.period_selector
+    max_date = df['FECHA'].max()
+    
+    if period == "Último Mes":
+        st.session_state.start_date = max_date - pd.DateOffset(months=1)
+        st.session_state.end_date = max_date
+    elif period == "Último Bimestre":
+        st.session_state.start_date = max_date - pd.DateOffset(months=2)
+        st.session_state.end_date = max_date
+    elif period == "Último Trimestre":
+        st.session_state.start_date = max_date - pd.DateOffset(months=3)
+        st.session_state.end_date = max_date
+    elif period == "Último Semestre":
+        st.session_state.start_date = max_date - pd.DateOffset(months=6)
+        st.session_state.end_date = max_date
+    elif period == "Último Año":
+        st.session_state.start_date = max_date - pd.DateOffset(years=1)
+        st.session_state.end_date = max_date
+    elif period == "Todo el Histórico":
+        st.session_state.start_date = df['FECHA'].min()
+        st.session_state.end_date = df['FECHA'].max()
+period_options = ["Personalizado", "Último Mes", "Último Bimestre", "Último Trimestre", "Último Semestre", "Último Año", "Todo el Histórico"]
+st.sidebar.selectbox(
+    "Seleccionar Periodo Recomendado", 
+    options=period_options, 
+    key="period_selector", 
+    on_change=update_dates
+)
+# Date Inputs (Connected to Session State)
+start_date = st.sidebar.date_input("Fecha Inicial", key="start_date")
+end_date = st.sidebar.date_input("Fecha Final", key="end_date")
 # Filter by date
 mask_date = (df['FECHA'] >= pd.to_datetime(start_date)) & (df['FECHA'] <= pd.to_datetime(end_date))
 df_filtered = df.loc[mask_date]
-
+# --- MODIFICACIÓN 2: Granularidad siempre Mensual ---
+# (No hay selector, se asume mensual para el gráfico de tiempo)
 # 2. Product Filter
 st.sidebar.subheader("2. Producto")
-products = sorted(df['PROD'].unique())
+products = sorted(df_filtered['PROD'].unique())
 selected_products = st.sidebar.multiselect("Seleccionar Producto(s)", products, default=products)
-
 if selected_products:
     df_filtered = df_filtered[df_filtered['PROD'].isin(selected_products)]
-
 # 3. Department Filter
 st.sidebar.subheader("3. Departamento")
-departments = sorted(df['DEPARTAMENTO'].unique())
+departments = sorted(df_filtered['DEPARTAMENTO'].unique())
 selected_departments = st.sidebar.multiselect("Seleccionar Departamento(s)", departments, default=departments)
-
 if selected_departments:
     df_filtered = df_filtered[df_filtered['DEPARTAMENTO'].isin(selected_departments)]
-
 # --- Visualizations ---
-
-# Layout: 2 Columns
-col1, col2 = st.columns(2)
-
-# Chart 1: Bar Chart (Volume vs Time)
+if df_filtered.empty:
+    st.warning("No hay datos para mostrar con los filtros seleccionados.")
+    st.stop()
+# Layout: Row 1 (Bar Chart Time + Pie Chart)
+col1, col2 = st.columns([2, 1]) # 2/3 for bar, 1/3 for pie
+# Chart 1: Bar Chart (Volume vs Time - Monthly)
 with col1:
-    st.subheader("Gráfico 1: Volumen en el Tiempo")
+    st.subheader("Gráfico 1: Evolución Mensual del Volumen")
     
-    if not df_filtered.empty:
-        # Group data based on granularity
-        if granularity == "Diario":
-            df_grouped_time = df_filtered.groupby('FECHA')['VOLUMEN'].sum().reset_index()
-            x_axis = 'FECHA'
-            title_suffix = "por Día"
-        else: # Mensual
-            df_filtered['Month_Year'] = df_filtered['FECHA'].dt.to_period('M').astype(str)
-            df_grouped_time = df_filtered.groupby('Month_Year')['VOLUMEN'].sum().reset_index()
-            x_axis = 'Month_Year'
-            title_suffix = "por Mes"
-        
-        fig_bar = px.bar(
-            df_grouped_time, 
-            x=x_axis, 
-            y='VOLUMEN',
-            title=f"Volumen {title_suffix}",
-            color_discrete_sequence=px.colors.sequential.Blues_r  # Blue palette
-        )
-        st.plotly_chart(fig_bar, use_container_width=True)
-    else:
-        st.info("No hay datos para mostrar con los filtros seleccionados.")
-
-# Chart 2: Pie Chart (Sector Percentage)
+    # Group by Month-Year
+    df_filtered['Month_Year'] = df_filtered['FECHA'].dt.to_period('M').astype(str)
+    df_grouped_time = df_filtered.groupby('Month_Year')['VOLUMEN'].sum().reset_index()
+    
+    fig_bar_time = px.bar(
+        df_grouped_time, 
+        x='Month_Year', 
+        y='VOLUMEN',
+        title="Volumen por Mes",
+        color_discrete_sequence=px.colors.sequential.Blues_r,
+        text_auto='.2s' # Show values on bars
+    )
+    fig_bar_time.update_layout(xaxis_title="Mes", yaxis_title="Volumen")
+    st.plotly_chart(fig_bar_time, use_container_width=True)
+# Chart 2: Pie Chart (Sector)
 with col2:
     st.subheader("Gráfico 2: Distribución por Sector")
     
-    if not df_filtered.empty:
-        df_grouped_sector = df_filtered.groupby('SECTOR')['VOLUMEN'].sum().reset_index() # Assuming volume weighted or just count? User said "porcentaje según columna: SECTOR". Usually implies count of records or sum of volume. I'll use count of records if Volume isn't specified, but usually pie charts for business data use the metric (Volume). Let's stick to Volume for now as it's the main metric, or just count. The prompt says "GRAFICO DE TORTA, en porcentaje según columna: SECTOR". I will assume it's the distribution of the filtered data, so count of rows is safer if Volume isn't explicitly asked for the pie, but Volume is usually more meaningful. Let's use Count for now as it represents "Market Share" by sector presence, or Volume. Let's use Volume as it's the main metric. Actually, let's use Count of records to show "percentage of entries" if not specified. Wait, "eje y: VOLUMEN" was for bar chart. For Pie, it just says "según columna: SECTOR". I'll use Volume as the value to be safe, as it's a "Reporte de Volumen".
-        
-        # Let's use Volume for the pie chart values to be consistent with the business context (Volume Analysis).
-        fig_pie = px.pie(
-            df_filtered, 
-            names='SECTOR', 
-            values='VOLUMEN', # Using Volume for weight
-            title="Porcentaje por Sector (Volumen)",
-            color_discrete_sequence=px.colors.sequential.Blues_r
-        )
-        st.plotly_chart(fig_pie, use_container_width=True)
-    else:
-        st.info("No hay datos para mostrar.")
-
-# Data Preview (Optional but helpful)
-with st.expander("Ver Datos Filtrados"):
-    st.dataframe(df_filtered)
+    # --- MODIFICACIÓN 1: Colores variados (no solo azul) ---
+    fig_pie = px.pie(
+        df_filtered, 
+        names='SECTOR', 
+        values='VOLUMEN', 
+        title="Participación por Sector",
+        color_discrete_sequence=px.colors.qualitative.Bold # Varied palette
+    )
+    fig_pie.update_traces(textposition='inside', textinfo='percent+label')
+    st.plotly_chart(fig_pie, use_container_width=True)
+# Layout: Row 2 (Horizontal Bar Chart)
+st.markdown("---")
+st.subheader("Gráfico 3: Volumen por Departamento")
+# --- MODIFICACIÓN 4: Gráfico de Barras Horizontales ---
+df_grouped_dept = df_filtered.groupby('DEPARTAMENTO')['VOLUMEN'].sum().reset_index().sort_values('VOLUMEN', ascending=True)
+fig_bar_horiz = px.bar(
+    df_grouped_dept,
+    x='VOLUMEN',
+    y='DEPARTAMENTO',
+    orientation='h',
+    title="Volumen Total por Departamento",
+    color='VOLUMEN',
+    color_continuous_scale=px.colors.sequential.Viridis, # Nice gradient
+    text_auto='.2s'
+)
+fig_bar_horiz.update_layout(xaxis_title="Volumen", yaxis_title="Departamento")
+st.plotly_chart(fig_bar_horiz, use_container_width=True)
+# Data Preview
+with st.expander("Ver Datos Detallados"):
+    st.dataframe(df_filtered, use_container_width=True)
